@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChange, getCurrentUser } from '../services/authService';
 
+const ADMIN_USERNAME = 'HPAIRAdmin@gmail.com';
+const ADMIN_PASSWORD = 'HPAIRR0cks123!';
+
 const AuthContext = createContext();
 
 export const useAuth = () => {
@@ -13,6 +16,7 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [adminUser, setAdminUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,11 +28,35 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
+  const loginAdmin = ({ username, password }) => {
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+      const adminSession = {
+        username: ADMIN_USERNAME,
+        role: 'admin',
+        email: ADMIN_USERNAME
+      };
+
+      setAdminUser(adminSession);
+      return { success: true, message: 'Admin login successful!' };
+    }
+
+    setAdminUser(null);
+    return { success: false, message: 'Invalid admin credentials.' };
+  };
+
+  const logoutAdmin = () => {
+    setAdminUser(null);
+  };
+
   const value = {
     user,
+    adminUser,
     loading,
     isAuthenticated: !!user,
-    userId: user?.uid || null
+    isAdminAuthenticated: !!adminUser,
+    userId: user?.uid || null,
+    loginAdmin,
+    logoutAdmin
   };
 
   return (

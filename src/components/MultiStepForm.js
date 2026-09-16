@@ -1,38 +1,153 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import PersonalInfoStep from './steps/PersonalInfoStep';
-import { submitForm, getFormSubmissions, getSubmissionCount } from '../services/firebaseService';
+import { submitForm, getFormSubmissions } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
 import { signOutUser } from '../services/authService';
+import { validateField, validateForm, FIELD_ORDER } from '../utils/validation';
+
+const DRAFT_STORAGE_KEY = 'personalInformationFormDraft';
+
+const submitFormData = async ({ formData, userId, refreshSubmissions, resetForm }) => {
+  try {
+    // Submission is only attempted after the existing validation gate passes.
+    const submissionData = {
+      ...formData,
+      userId,
+    };
+
+    const result = await submitForm(submissionData);
+
+    if (!result.success) {
+      return {
+        success: false,
+        message: result.message || 'Failed to submit form. Please try again.',
+      };
+    }
+
+    // Refresh is helpful for the user's history, but it must not block a successful submission.
+    if (typeof refreshSubmissions === 'function') {
+      await Promise.race([
+        refreshSubmissions().catch(error => {
+          console.error('Submission history refresh failed:', error);
+        }),
+        new Promise(resolve => setTimeout(resolve, 5000)),
+      ]);
+    }
+
+    if (typeof resetForm === 'function') {
+      resetForm();
+    }
+
+    return {
+      success: true,
+      message: result.message || 'Form submitted successfully!',
+    };
+  } catch (error) {
+    console.error('Submit flow error:', error);
+    return {
+      success: false,
+      message: 'An error occurred. Please try again.',
+    };
+  }
+};
 
 const MultiStepForm = () => {
   const [formData, setFormData] = useState({});
+  const [validationErrors, setValidationErrors] = useState({});
+  const [touched, setTouched] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
   const [submissions, setSubmissions] = useState([]);
-  const [submissionCount, setSubmissionCount] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { user, userId } = useAuth();
+  const fieldRefs = useRef({});
+  const debounceTimers = useRef({});
+
+  const runValidation = (fieldName, value, shouldTouch = true) => {
+    if (shouldTouch) {
+      setTouched(prev => ({ ...prev, [fieldName]: true }));
+    }
+
+    const error = validateField(fieldName, value, { ...formData, [fieldName]: value });
+    setValidationErrors(prev => ({ ...prev, [fieldName]: error }));
+    return error;
+  };
+
+  const handleFieldChange = (fieldName, value) => {
+    if (['firstName', 'lastName'].includes(fieldName)) {
+      if (debounceTimers.current[fieldName]) {
+        clearTimeout(debounceTimers.current[fieldName]);
+      }
+
+      debounceTimers.current[fieldName] = setTimeout(() => {
+        runValidation(fieldName, value, true);
+      }, 300);
+      return;
+    }
+
+    runValidation(fieldName, value, true);
+  };
+
+  const handleFieldBlur = (fieldName, value) => {
+    if (['firstName', 'lastName'].includes(fieldName) && debounceTimers.current[fieldName]) {
+      clearTimeout(debounceTimers.current[fieldName]);
+    }
+
+    runValidation(fieldName, value, true);
+  };
 
   const handleLogout = async () => {
     await signOutUser();
   };
+
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach(clearTimeout);
+    };
+  }, []);
 
   // Load user's submissions
   useEffect(() => {
     loadSubmissions();
   }, [userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+
+    try {
+      const savedDraft = window.localStorage.getItem(`${DRAFT_STORAGE_KEY}:${userId}`);
+      if (savedDraft) {
+        setFormData(JSON.parse(savedDraft));
+        setSaveMessage('Saved progress restored.');
+      }
+    } catch (error) {
+      console.error('Unable to restore saved progress:', error);
+    }
+  }, [userId]);
+
+  const handleSaveProgress = () => {
+    try {
+      const draftData = { ...formData };
+      delete draftData.resumeFileNameFile;
+      delete draftData.portfolioFileNameFile;
+
+      window.localStorage.setItem(
+        `${DRAFT_STORAGE_KEY}:${userId}`,
+        JSON.stringify(draftData)
+      );
+      setSaveMessage('Progress saved successfully.');
+    } catch (error) {
+      console.error('Unable to save progress:', error);
+      setSaveMessage('Unable to save progress. Please try again.');
+    }
+  };
+
   const loadSubmissions = async () => {
     try {
-      setLoading(true);
-      const [submissionsResult, countResult] = await Promise.all([
-        getFormSubmissions(),
-        getSubmissionCount()
-      ]);
+      const submissionsResult = await getFormSubmissions();
 
       if (submissionsResult.success) {
-        // Show only current user's submissions
         const userSubmissions = submissionsResult.data.filter(
           submission => submission.userId === userId
         );
@@ -41,46 +156,64 @@ const MultiStepForm = () => {
         setError(submissionsResult.message);
       }
 
-      if (countResult.success) {
-        setSubmissionCount(countResult.count);
-      }
     } catch (err) {
       setError('Failed to load submissions');
       console.error('Error loading submissions:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
-  // TODO: Implement form validation using Formik and Yup
-  // TODO: Implement form data handling
+  const focusFirstInvalidField = (errors) => {
+    const invalidField = FIELD_ORDER.find(field => !!errors[field]);
+
+    if (invalidField && fieldRefs.current[invalidField]) {
+      fieldRefs.current[invalidField].focus();
+      fieldRefs.current[invalidField].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Keep the existing validation gate exactly as-is and block submission when invalid.
+    const validationResult = validateForm(formData);
+    const nextErrors = validationResult.errors;
+
+    setValidationErrors(nextErrors);
+    setTouched(Object.fromEntries(FIELD_ORDER.map(fieldName => [fieldName, true])));
+
+    if (!validationResult.isValid) {
+      setSubmitMessage('Error. Required information missing.');
+      focusFirstInvalidField(nextErrors);
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitMessage('');
-    
+
     try {
-      // TODO: Add validation before submitting
-      const submissionData = {
-        ...formData,
-        userId: userId
-      };
-      
-      const result = await submitForm(submissionData);
-      
-      if (result.success) {
-        setSubmitMessage('Form submitted successfully!');
-        // Reset form
-        setFormData({});
-        // Reload submissions to show the new one
-        loadSubmissions();
+      const result = await submitFormData({
+        formData,
+        userId,
+        refreshSubmissions: loadSubmissions,
+        resetForm: () => {
+          setFormData({});
+          setValidationErrors({});
+          setTouched({});
+          setSaveMessage('');
+          window.localStorage.removeItem(`${DRAFT_STORAGE_KEY}:${userId}`);
+        },
+      });
+
+      setSubmitMessage(result.message);
+      if (!result.success) {
+        setError(result.message);
       } else {
-        setSubmitMessage(result.message);
+        setError('');
       }
     } catch (error) {
-      setSubmitMessage('An error occurred. Please try again.');
       console.error('Submit error:', error);
+      setSubmitMessage('An error occurred. Please try again.');
+      setError('An error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -99,31 +232,49 @@ const MultiStepForm = () => {
             Logout
           </button>
         </div>
-        <p>Please provide your basic personal details.</p>
-        
-        <div style={{ 
-          marginBottom: '20px', 
-          padding: '10px', 
-          backgroundColor: '#e3f2fd', 
+        <div style={{
+          marginBottom: '20px',
+          padding: '10px',
+          backgroundColor: '#e3f2fd',
           borderRadius: '4px',
           fontSize: '14px'
         }}>
           <strong>Logged in as:</strong> {user.email}
         </div>
-        
-        <form onSubmit={handleSubmit}>
-          <PersonalInfoStep 
-            formData={formData} 
-            setFormData={setFormData} 
+
+        <p>Please provide your basic personal details.</p>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <PersonalInfoStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={validationErrors}
+            touched={touched}
+            onFieldChange={handleFieldChange}
+            onFieldBlur={handleFieldBlur}
+            fieldRefs={fieldRefs}
           />
-          
+
           {submitMessage && (
             <div className={`submit-message ${submitMessage.includes('successfully') ? 'success' : 'error'}`}>
               {submitMessage}
             </div>
           )}
-          
+
+          {saveMessage && (
+            <div className={`submit-message ${saveMessage.includes('successfully') || saveMessage.includes('restored') ? 'success' : 'error'}`}>
+              {saveMessage}
+            </div>
+          )}
+
           <div className="form-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSaveProgress}
+            >
+              Save progress
+            </button>
             <button
               type="submit"
               className="btn btn-primary"
@@ -134,14 +285,12 @@ const MultiStepForm = () => {
           </div>
         </form>
 
-        {/* Admin Panel - User's Submissions */}
         <div style={{ marginTop: '40px', paddingTop: '40px', borderTop: '2px solid #e0e0e0' }}>
           <h2>Your Form Submissions</h2>
           <p>View all your submitted forms below.</p>
-          
+
           <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
             <p><strong>Logged in as:</strong> {user.email}</p>
-            <p><strong>Total submissions:</strong> {submissionCount}</p>
             <p><strong>Your submissions:</strong> {submissions.length}</p>
           </div>
 
@@ -151,46 +300,18 @@ const MultiStepForm = () => {
             </div>
           )}
 
-          <button 
-            onClick={loadSubmissions} 
+          <button
+            onClick={loadSubmissions}
             className="btn btn-primary"
             style={{ marginBottom: '20px' }}
           >
             Refresh
           </button>
 
-          {loading ? (
-            <p>Loading submissions...</p>
-          ) : submissions.length === 0 ? (
-            <p>No submissions yet. Fill out the form above to get started!</p>
-          ) : (
-            <div className="submissions-list">
-              {submissions.map((submission) => (
-                <div key={submission.id} className="submission-item">
-                  <div className="submission-header">
-                    <h3>Submission #{submission.id.slice(-8)}</h3>
-                    <span className="submission-date">
-                      {formatDate(submission.submittedAt)}
-                    </span>
-                  </div>
-              <div className="submission-details">
-                <p><strong>Name:</strong> {submission.firstName} {submission.lastName}</p>
-                <p><strong>Date of Birth:</strong> {submission.dateOfBirth}</p>
-                <p><strong>Gender:</strong> {submission.gender}</p>
-              </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
-};
-
-const formatDate = (timestamp) => {
-  if (!timestamp) return 'N/A';
-  return new Date(timestamp.seconds * 1000).toLocaleString();
 };
 
 export default MultiStepForm;

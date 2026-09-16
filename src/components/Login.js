@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { signInUser, registerUser } from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login = ({ onLogin }) => {
+  const navigate = useNavigate();
+  const { loginAdmin } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,7 +20,18 @@ const Login = ({ onLogin }) => {
     try {
       let result;
       if (isLogin) {
-        result = await signInUser(email, password);
+        const normalizedEmail = email.trim().toLowerCase();
+
+        if (normalizedEmail === 'hpairadmin@gmail.com') {
+          result = loginAdmin({ username: email.trim(), password });
+
+          if (result.success) {
+            navigate('/admin');
+            return;
+          }
+        } else {
+          result = await signInUser(email, password);
+        }
       } else {
         result = await registerUser(email, password);
       }

@@ -1,19 +1,46 @@
 .App {
-  text-align: center;
+  min-height: 100vh;
 }
 
 .App-header {
-  background-color: #282c34;
-  padding: 20px;
-  color: white;
-  margin-bottom: 20px;
+  background: linear-gradient(135deg, #322624 0%, #5d3d3a 48%, #b2615b 100%);
+  padding: 32px 20px 28px;
+  color: #fffaf7;
+  box-shadow: 0 18px 36px rgba(62, 42, 36, 0.14);
+}
+
+.App-header-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.App-kicker {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .App-header h1 {
-  margin-bottom: 10px;
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
 }
 
 .App-header p {
-  font-size: 16px;
-  opacity: 0.8;
+  margin-top: 12px;
+  font-size: 1rem;
+  opacity: 0.82;
+}
+
+main {
+  padding-bottom: 36px;
 }
