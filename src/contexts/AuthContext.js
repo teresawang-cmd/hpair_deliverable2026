@@ -29,7 +29,9 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const loginAdmin = ({ username, password }) => {
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const normalizedUsername = username.trim().toLowerCase();
+
+    if (normalizedUsername === ADMIN_USERNAME.toLowerCase() && password === ADMIN_PASSWORD) {
       const adminSession = {
         username: ADMIN_USERNAME,
         role: 'admin',

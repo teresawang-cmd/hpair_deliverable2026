@@ -29,6 +29,13 @@ const Login = ({ onLogin }) => {
             navigate('/admin');
             return;
           }
+
+          result = await signInUser(email.trim(), password);
+
+          if (result.success) {
+            navigate('/admin');
+            return;
+          }
         } else {
           result = await signInUser(email, password);
         }

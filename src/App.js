@@ -28,7 +28,8 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const AdminProtectedRoute = ({ children }) => {
-  const { adminUser, loading } = useAuth();
+  const { adminUser, user, loading } = useAuth();
+  const isAdminEmail = user?.email?.trim().toLowerCase() === 'hpairadmin@gmail.com';
 
   if (loading) {
     return (
@@ -40,7 +41,7 @@ const AdminProtectedRoute = ({ children }) => {
     );
   }
 
-  if (!adminUser) {
+  if (!adminUser && !isAdminEmail) {
     return <AdminLogin />;
   }
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getFormSubmissions,
   getSubmissionCount,
@@ -8,8 +9,10 @@ import {
   restoreSubmission,
 } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
+import { signOutUser } from '../services/authService';
 
 const AdminPanel = () => {
+  const navigate = useNavigate();
   const [submissions, setSubmissions] = useState([]);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [submissionCount, setSubmissionCount] = useState(0);
@@ -19,6 +22,12 @@ const AdminPanel = () => {
   const [trashedSubmissions, setTrashedSubmissions] = useState([]);
   const [showTrash, setShowTrash] = useState(false);
   const { adminUser, logoutAdmin } = useAuth();
+
+  const handleLogout = async () => {
+    await signOutUser();
+    logoutAdmin();
+    navigate('/');
+  };
 
   const loadSubmissions = async () => {
     try {
@@ -213,7 +222,7 @@ const AdminPanel = () => {
         <div className="admin-panel-header">
           <h1>Admin Panel - All Submissions</h1>
           <div className="admin-panel-actions">
-            <button type="button" onClick={logoutAdmin} className="btn btn-secondary">Logout</button>
+            <button type="button" onClick={handleLogout} className="btn btn-secondary">Logout</button>
           </div>
         </div>
 
