@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChange, getCurrentUser } from '../services/authService';
+import { onAuthStateChange } from '../services/authService';
 
 const ADMIN_USERNAME = 'HPAIRAdmin@gmail.com';
 const ADMIN_PASSWORD = 'HPAIRR0cks123!';

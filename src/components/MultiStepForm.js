@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PersonalInfoStep from './steps/PersonalInfoStep';
 import { submitForm, getFormSubmissions } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
@@ -101,16 +101,37 @@ const MultiStepForm = () => {
     await signOutUser();
   };
 
+  const loadSubmissions = useCallback(async () => {
+    try {
+      const submissionsResult = await getFormSubmissions();
+
+      if (submissionsResult.success) {
+        const userSubmissions = submissionsResult.data.filter(
+          submission => submission.userId === userId
+        );
+        setSubmissions(userSubmissions);
+      } else {
+        setError(submissionsResult.message);
+      }
+
+    } catch (err) {
+      setError('Failed to load submissions');
+      console.error('Error loading submissions:', err);
+    }
+  }, [userId]);
+
   useEffect(() => {
+    const timers = debounceTimers.current;
+
     return () => {
-      Object.values(debounceTimers.current).forEach(clearTimeout);
+      Object.values(timers).forEach(clearTimeout);
     };
   }, []);
 
   // Load user's submissions
   useEffect(() => {
     loadSubmissions();
-  }, [userId]);
+  }, [userId, loadSubmissions]);
 
   useEffect(() => {
     if (!userId) return;
@@ -140,25 +161,6 @@ const MultiStepForm = () => {
     } catch (error) {
       console.error('Unable to save progress:', error);
       setSaveMessage('Unable to save progress. Please try again.');
-    }
-  };
-
-  const loadSubmissions = async () => {
-    try {
-      const submissionsResult = await getFormSubmissions();
-
-      if (submissionsResult.success) {
-        const userSubmissions = submissionsResult.data.filter(
-          submission => submission.userId === userId
-        );
-        setSubmissions(userSubmissions);
-      } else {
-        setError(submissionsResult.message);
-      }
-
-    } catch (err) {
-      setError('Failed to load submissions');
-      console.error('Error loading submissions:', err);
     }
   };
 
